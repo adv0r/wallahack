@@ -1,15 +1,21 @@
 package io.adva.wallhack.launch;
 
+import static org.kohsuke.args4j.ExampleMode.ALL;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.List;
 
 import io.adva.wallhack.models.Product;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.kohsuke.args4j.Argument;
+import org.kohsuke.args4j.CmdLineException;
+import org.kohsuke.args4j.CmdLineParser;
+import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +23,32 @@ import org.slf4j.LoggerFactory;
  * Created by admin on 18/04/15.
  */
 public class MainLauncher {
+
+	private static final boolean DEBUG = true;
+
+	@Option(name="-lat", usage="Latitude e.g: 41.398077; See http://mondeca.com/index.php/en/any-place-en")
+	private String latitude = "41.398077";
+
+	@Option(name="-long", usage="Longitude e.g: 2.170432; See http://mondeca.com/index.php/en/any-place-en")
+	private String longitude = "2.170432";
+
+	@Option(name="-cat", usage="Category e.g: 12345")
+	private String category = CAT_ELECTRONIC;
+
+	@Option(name="-keyword", usage="Keyword e.g: casita")
+	private String keyword = "casita";
+
+	@Option(name="-min", usage="Min price e.g 0")
+	private Integer minPrice = 0;
+
+	@Option(name="-max", usage="Max price e.g 50")
+	private Integer maxPrice = 50;
+
+	@Option(name="-limit", usage="Limit e.g 10")
+	private int limit = 10;
+
+	@Argument
+	private List<String> arguments = new ArrayList<String>();
 
     static {
         System.setProperty("logback.configurationFile", "config/logging/logback.xml");
@@ -32,13 +64,19 @@ public class MainLauncher {
 
     public static final String PRODUCT_BASE = "http://es.wallapop.com";
 
-    public static void main (String[] args)
+   public static void main (String[] args)
     {
-        String keyword = "casita perro";
-        int minPrice = 0;
-        int maxPrice = 50;
+        try {
+            new MainLauncher().doMain(args);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
-        URL url = createUrl(keyword, minPrice, maxPrice,CAT_ELECTRONIC);
+    public void doMain(String[] args) throws IOException {
+        parseArgs(args);
+
+        URL url = createUrl(keyword, minPrice, maxPrice, category);
 
         Document doc = null;
         try {
@@ -51,8 +89,8 @@ public class MainLauncher {
         Element container = containers.first();
 
         Elements cards = container.getElementsByClass("card");
-        LOG.info("Scraping " + cards.size() + " products in Barcelona matching criteria : " +
-                "category = Electronic; " +
+        LOG.info("Scraping " + cards.size() + " products matching criteria : " +
+                "category = " + category + ";" +
                 minPrice + "<price<" + maxPrice + "; ");
         LOG.info(url.toString());
 
@@ -71,13 +109,46 @@ public class MainLauncher {
         printElems(productList, maxItems);
     }
 
-    public static void printElems(ArrayList<Product> list,int max)
-    {
-        for (int i = 0; i <max; i++)
-        {
-        LOG.info((i+1)+" : "+ list.get(i).toString());
+    private void parseArgs(String[] args) {
+        CmdLineParser parser = new CmdLineParser(this);
+        parser.setUsageWidth(80);
+
+        try {
+            parser.parseArgument(args);
+
+            if (arguments.isEmpty()) {
+                throw new CmdLineException(parser, "No argument is given");
+            }
+
+        } catch (CmdLineException e ) {
+            // if there's a problem in the command line,
+            // you'll get this exception. this will report
+            // an error message.
+            System.err.println(e.getMessage());
+            System.err.println("java MainLauncher [options...] arguments...");
+            // print the list of available options
+            parser.printUsage(System.err);
+            System.err.println();
+
+            // print option sample. This is useful some time
+            System.err.println("  Example: java SampleMain"+parser.printExample(ALL));
+
+            if (!DEBUG) {
+                System.exit(-1);
+            }
+            return;
         }
     }
+
+    public static void printElems(ArrayList<Product> list,int max)
+    {
+        int i = 0;
+        while (i < max && i < list.size()) {
+            LOG.info(i+" : "+ list.get(i).toString());
+            i++;
+        }
+    }
+
     public static Product parseProduct(Element card)
     {
         Product toRet = null;
@@ -107,8 +178,6 @@ public class MainLauncher {
     }
 
 
-
-
     private static String getTextFromPage(String url, String clazz)
     {
         String toRet = "";
@@ -120,6 +189,9 @@ public class MainLauncher {
         }
 
         Element target = doc.getElementsByClass(clazz).first();
+        if (target == null) {
+            return "";
+        }
         return target.text();
     }
 
